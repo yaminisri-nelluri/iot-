@@ -1,0 +1,141 @@
+#include <LiquidCrystal.h>
+LiquidCrystal lcd(2,3,4,5,6,7);  // RS, E, D4, D5, D6, D7
+#include <SoftwareSerial.h>       //Software Serial library
+SoftwareSerial espSerial(8,9);   //Pin 8 and 9 act as RX and TX. Connect them to TX and RX of ESP8266  
+
+#define DEBUG true
+String mySSID = "project6875";       // WiFi SSID
+String myPWD = "123456789"; // WiFi Password
+String myAPI = "LM1ZW5G7U4QYCOHG";   // API Key
+String myHOST = "api.thingspeak.com";
+String myPORT = "80";
+String myFIELD1 = "field1"; 
+String myFIELD2 = "field2"; 
+String myFIELD3 = "field3"; 
+String myFIELD4 = "field4"; 
+String myFIELD5 = "field5"; 
+String myFIELD6 = "field6"; 
+String myFIELD7 = "field7"; 
+int sendVal1;
+int sendVal2;
+int sendVal3;
+int sendVal4;
+int sendVal5;
+int sendVal6;
+int sendVal7;
+
+#define ldr A0
+#define outPin A1
+#define MQ02_PIN A2
+#define s A3
+
+// Create an instance of the BMP180 sensor
+Adafruit_BMP085_Unified bmp = Adafruit_BMP085_Unified(10085);
+
+dht DHT;
+// Define minimum and maximum solar radiation values (can adjust based on calibration)
+const int minRadiation = 0;    // Minimum mapped value (e.g., night/darkness)
+const int maxRadiation = 1000; // Maximum mapped value (e.g., brightest sunlight)
+void setup() {
+  // put your setup code here, to run once:
+  Serial.begin(9600);
+  espSerial.begin(115200);
+  lcd.begin(16, 2);  // Start the LCD with 16 columns and 2 rows
+  lcd.print("Welcome To      ");
+  lcd.setCursor(0, 1);
+  lcd.print("The Project     ");
+
+  delay(2000);
+  lcd.clear();
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
+  sensors_event_t event;
+  bmp.getEvent(&event);
+  float seaLevelPressure;
+  float altitude;
+
+  int l = analogRead(ldr);
+  // Map the LDR value to a range of 0 to 1000 (representing solar radiation)
+  int solarRadiation = map(l, 1023, 0, minRadiation, maxRadiation);
+
+  int airQualityValue = analogRead(MQ02_PIN);
+  // Map the analog value to a human-readable air quality level
+  // Adjust the min and max values based on calibration
+  int airQualityPercentage = map(airQualityValue, 0, 1023, 0, 100);
+  int sp = analogRead(s);
+  int speed = map(sp,1023,0,360,0);
+
+  int readData = DHT.read11(outPin);
+  int t = DHT.temperature;
+  int h = DHT.humidity;
+  Serial.println(analogRead(A3));
+  Serial.print("L:"+String(solarRadiation)+" ");
+  Serial.print("T:"+String(t)+" ");
+  Serial.println("H:"+String(h)+" ");
+  Serial.print("Solar Radiation: ");
+  Serial.println(solarRadiation);
+  Serial.print("Air Quality: ");
+  Serial.print(airQualityPercentage);
+  Serial.println("%");
+  Serial.println("Speed:"+String(speed)+" Km/h");
+  String s1,s2;
+  s1 = "Temp:"+String(t)+" Hum:"+String(h)+"     ";
+  s2 = "Ldr:"+String(solarRadiation)+" AQ:"+String(airQualityPercentage)+"%    ";
+  lcd.setCursor(0,0);
+  lcd.print(s1);
+  lcd.setCursor(0,1);
+  lcd.print(s2);
+  delay(1000);
+
+  if (event.pressure) {
+    // Display pressure in hPa (hectopascals)
+    Serial.print("Pressure: ");
+    Serial.print(event.pressure);
+    Serial.println(" hPa");
+
+    // Calculate and display altitude in meters
+    // You can adjust the seaLevelPressure value to your local value for more accurate altitude
+     seaLevelPressure = 1013.25; // Standard sea level pressure in hPa
+     altitude = bmp.pressureToAltitude(seaLevelPressure, event.pressure);
+    Serial.print("Altitude: ");
+    Serial.print(altitude);
+    Serial.println(" meters");
+  }
+  String s3,s4;
+  s3 = "P:"+String(event.pressure)+" A:"+String(altitude)+"    ";
+  s4 = "Speed:"+String(speed)+" Km/h              ";
+  lcd.setCursor(0,0);
+  lcd.print(s3);
+  lcd.setCursor(0,1);
+  lcd.print(s4);
+  delay(1000);
+  sendVal1 = solarRadiation;
+  sendVal2 = t;
+  sendVal3 = h;
+  sendVal4 = airQualityPercentage;
+  sendVal5 = event.pressure;
+  sendVal6 = altitude;
+  sendVal7 = speed;
+
+
+  String sendData = "GET /update?api_key="+ myAPI +"&"+ myFIELD1 +"="+String(sendVal1) +"&"+ myFIELD2 +"="+String(sendVal2) +"&"+ myFIELD3 +"="+String(sendVal3) +"&"+ myFIELD4 +"="+String(sendVal4) +"&"+ myFIELD5 +"="+String(sendVal5) +"&"+ myFIELD6 +"="+String(sendVal6) +"&"+ myFIELD7 +"="+String(sendVal7);
+    espData("AT+CIPMUX=1", 1000, DEBUG);       //Allow multiple connections
+    espData("AT+CIPSTART=0,\"TCP\",\""+ myHOST +"\","+ myPORT, 1000, DEBUG);
+    espData("AT+CIPSEND=0," +String(sendData.length()+20),1000,DEBUG);  
+    espSerial.find(">"); 
+    espSerial.println(sendData);
+//    Serial.print("Value to be sent: ");
+//    Serial.println(sendVal1);
+//    Serial.println(sendVal2);
+//    Serial.println(sendVal3);
+//    Serial.println(sendVal4);
+//    Serial.println(sendVal5);
+//    Serial.println(sendVal6);
+//    Serial.println(sendVal7);
+    
+     
+    espData("AT+CIPCLOSE=0",1000,DEBUG);
+    delay(1000);
+}
